@@ -11,6 +11,7 @@ import TopicDetail from './features/topics/TopicDetail';
 import Flashcard from './features/flashcard/Flashcard';
 import Quiz from './features/quiz/Quiz';
 import FillBlank from './features/fill/FillBlank';
+import Landing from './features/landing/Landing';
 
 function App() {
   return (
@@ -111,7 +112,7 @@ function App() {
           />
 
           {/* Default redirect */}
-          <Route path="/" element={<Navigate to="/dashboard" replace />} />
+          <Route path="/" element={<Landing />} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>
