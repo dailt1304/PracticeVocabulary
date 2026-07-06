@@ -18,7 +18,7 @@ import './Flashcard.css';
 
 const Flashcard = () => {
   const { id } = useParams(); // Topic ID
-  const { user, profile, fetchProfile } = useAuth();
+  const { user, profile, updateSessionResults } = useAuth();
   const navigate = useNavigate();
 
   const [topic, setTopic] = useState(null);
@@ -135,23 +135,32 @@ const Flashcard = () => {
       origin: { y: 0.6 }
     });
 
-    // Award XP
+    // Award XP and Save Progress
     if (!xpAwarded && user) {
       const earnedXP = 15; // Base XP for completing flashcard session
-      const newXP = (profile?.total_xp || 0) + earnedXP;
 
-      // Update total XP in user profile
-      const { error } = await supabase
-        .from('profiles')
-        .update({ total_xp: newXP })
-        .eq('id', user.id);
+      const progressUpdates = [
+        ...learnedWords.map(wordId => ({
+          user_id: user.id,
+          vocabulary_id: wordId,
+          status: 'mastered',
+          last_reviewed_at: new Date().toISOString()
+        })),
+        ...reviewWords.map(wordId => ({
+          user_id: user.id,
+          vocabulary_id: wordId,
+          status: 'learning',
+          last_reviewed_at: new Date().toISOString()
+        }))
+      ];
 
-      if (!error) {
-        setXpAwarded(true);
-        // Refresh local profile state in Auth Context
-        await fetchProfile();
-        toast.success(`Chúc mừng! Bạn đã nhận được +${earnedXP} XP! 🏆`);
-      }
+      await updateSessionResults({
+        xpGained: earnedXP,
+        progressUpdates
+      });
+
+      setXpAwarded(true);
+      toast.success(`Chúc mừng! Bạn đã nhận được +${earnedXP} XP! 🏆`);
     }
   };
 

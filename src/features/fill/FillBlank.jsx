@@ -18,7 +18,7 @@ import './FillBlank.css';
 
 const FillBlank = () => {
   const { id } = useParams(); // Topic ID
-  const { user, profile, fetchProfile } = useAuth();
+  const { user, profile, updateSessionResults } = useAuth();
   const navigate = useNavigate();
   const inputRef = useRef(null);
 
@@ -35,6 +35,8 @@ const FillBlank = () => {
   const [hintsUsedCount, setHintsUsedCount] = useState(0); // Count how many times hints were used in this session
   const [isFinished, setIsFinished] = useState(false);
   const [xpAwarded, setXpAwarded] = useState(false);
+  const [correctWords, setCorrectWords] = useState([]);
+  const [incorrectWords, setIncorrectWords] = useState([]);
 
   const fetchTopicAndVocab = async () => {
     try {
@@ -113,9 +115,11 @@ const FillBlank = () => {
 
     if (correct) {
       setScore((prev) => prev + 1);
+      setCorrectWords((prev) => [...prev, currentVocab.id]);
       toast.success('Chính xác! 🎉', { duration: 1500 });
       speakWord(currentVocab.word);
     } else {
+      setIncorrectWords((prev) => [...prev, currentVocab.id]);
       toast.error('Chưa chính xác! 😢', { duration: 1500 });
     }
   };
@@ -146,26 +150,34 @@ const FillBlank = () => {
 
     if (!xpAwarded && user) {
       // XP logic: +5 XP for correct answer, -2 XP if hint was used for that answer, plus +15 XP bonus for 100% correct
-      // To simplify: we can track the total XP earned dynamically
-      // Let's say: score * 5 - (hintsUsedCount * 2) + (isPerfect ? 15 : 0)
       // Ensure XP earned is not negative
       const baseXP = score * 5;
       const penalty = hintsUsedCount * 2;
       const bonus = isPerfect ? 15 : 0;
       const earnedXP = Math.max(0, baseXP - penalty + bonus);
 
-      const newXP = (profile?.total_xp || 0) + earnedXP;
+      const progressUpdates = [
+        ...correctWords.map((vocabId) => ({
+          user_id: user.id,
+          vocabulary_id: vocabId,
+          status: 'mastered',
+          last_reviewed_at: new Date().toISOString(),
+        })),
+        ...incorrectWords.map((vocabId) => ({
+          user_id: user.id,
+          vocabulary_id: vocabId,
+          status: 'learning',
+          last_reviewed_at: new Date().toISOString(),
+        })),
+      ];
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ total_xp: newXP })
-        .eq('id', user.id);
+      await updateSessionResults({
+        xpGained: earnedXP,
+        progressUpdates,
+      });
 
-      if (!error) {
-        setXpAwarded(true);
-        await fetchProfile();
-        toast.success(`Bạn đã nhận được +${earnedXP} XP! 🏆`);
-      }
+      setXpAwarded(true);
+      toast.success(`Bạn đã nhận được +${earnedXP} XP! 🏆`);
     }
   };
 
@@ -394,6 +406,8 @@ const FillBlank = () => {
                 setUsedHint(false);
                 setUserInput('');
                 setIsAnswered(false);
+                setCorrectWords([]);
+                setIncorrectWords([]);
                 fetchTopicAndVocab();
               }}
             >

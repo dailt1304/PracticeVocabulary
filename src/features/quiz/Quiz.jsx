@@ -17,7 +17,7 @@ import './Quiz.css';
 
 const Quiz = () => {
   const { id } = useParams(); // Topic ID
-  const { user, profile, fetchProfile } = useAuth();
+  const { user, profile, updateSessionResults } = useAuth();
   const navigate = useNavigate();
 
   const [topic, setTopic] = useState(null);
@@ -30,6 +30,8 @@ const Quiz = () => {
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
   const [xpAwarded, setXpAwarded] = useState(false);
+  const [correctWords, setCorrectWords] = useState([]);
+  const [incorrectWords, setIncorrectWords] = useState([]);
 
   const speakWord = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -142,10 +144,12 @@ const Quiz = () => {
     
     if (optionIndex === currentQuestion.correctIndex) {
       setScore((prev) => prev + 1);
+      setCorrectWords((prev) => [...prev, currentQuestion.vocabId]);
       toast.success('Chính xác! 🎉', { duration: 1000 });
       // Speak the word on correct answer to reinforce learning
       speakWord(currentQuestion.word);
     } else {
+      setIncorrectWords((prev) => [...prev, currentQuestion.vocabId]);
       toast.error('Chưa chính xác! 😢', { duration: 1000 });
     }
   };
@@ -177,18 +181,29 @@ const Quiz = () => {
     if (!xpAwarded && user) {
       // Award 3 XP for each correct answer + 5 bonus XP for perfect score
       const earnedXP = score * 3 + (isPerfect ? 10 : 0);
-      const newXP = (profile?.total_xp || 0) + earnedXP;
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({ total_xp: newXP })
-        .eq('id', user.id);
+      const progressUpdates = [
+        ...correctWords.map((vocabId) => ({
+          user_id: user.id,
+          vocabulary_id: vocabId,
+          status: 'mastered',
+          last_reviewed_at: new Date().toISOString(),
+        })),
+        ...incorrectWords.map((vocabId) => ({
+          user_id: user.id,
+          vocabulary_id: vocabId,
+          status: 'learning',
+          last_reviewed_at: new Date().toISOString(),
+        })),
+      ];
 
-      if (!error) {
-        setXpAwarded(true);
-        await fetchProfile();
-        toast.success(`Bạn đã nhận được +${earnedXP} XP! 🏆`);
-      }
+      await updateSessionResults({
+        xpGained: earnedXP,
+        progressUpdates,
+      });
+
+      setXpAwarded(true);
+      toast.success(`Bạn đã nhận được +${earnedXP} XP! 🏆`);
     }
   };
 
@@ -368,6 +383,8 @@ const Quiz = () => {
                 setScore(0);
                 setSelectedOption(null);
                 setIsAnswered(false);
+                setCorrectWords([]);
+                setIncorrectWords([]);
                 fetchTopicAndQuiz();
               }}
             >
