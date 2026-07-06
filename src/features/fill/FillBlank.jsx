@@ -38,6 +38,12 @@ const FillBlank = () => {
   const [correctWords, setCorrectWords] = useState([]);
   const [incorrectWords, setIncorrectWords] = useState([]);
 
+  // New learning mode selection states
+  const [showModeSelection, setShowModeSelection] = useState(false);
+  const [rawVocabulary, setRawVocabulary] = useState([]);
+  const [masteredIds, setMasteredIds] = useState(new Set());
+  const [stats, setStats] = useState({ total: 0, mastered: 0, learning: 0, new: 0 });
+
   const fetchTopicAndVocab = async () => {
     try {
       const [topicRes, vocabRes] = await Promise.all([
@@ -60,13 +66,79 @@ const FillBlank = () => {
         return;
       }
       
-      // Shuffle vocabulary list for fill-in-the-blank session
-      setVocabList([...list].sort(() => Math.random() - 0.5));
+      setRawVocabulary(list);
+
+      // Fetch user progress for these words
+      const vocabIds = list.map(v => v.id);
+      const { data: progressData, error: progressError } = await supabase
+        .from('learning_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('vocabulary_id', vocabIds);
+
+      if (progressError) throw progressError;
+
+      const progressMap = {};
+      const masteredSet = new Set();
+      let masteredCount = 0;
+      let learningCount = 0;
+
+      (progressData || []).forEach((p) => {
+        progressMap[p.vocabulary_id] = p.status;
+        if (p.status === 'mastered') {
+          masteredSet.add(p.vocabulary_id);
+          masteredCount++;
+        } else if (p.status === 'learning') {
+          learningCount++;
+        }
+      });
+
+      const newCount = list.length - masteredCount - learningCount;
+      setMasteredIds(masteredSet);
+      setStats({
+        total: list.length,
+        mastered: masteredCount,
+        learning: learningCount,
+        new: newCount
+      });
+
+      // If there are mastered words, show learning mode selection screen
+      if (masteredCount > 0) {
+        setShowModeSelection(true);
+      } else {
+        // Start studying all words
+        setVocabList([...list].sort(() => Math.random() - 0.5));
+        setShowModeSelection(false);
+      }
     } catch (err) {
+      console.error(err);
       toast.error('Lỗi khi tải dữ liệu bài học');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartLearningMode = (onlyRemaining) => {
+    let targetList = [...rawVocabulary];
+    if (onlyRemaining) {
+      targetList = rawVocabulary.filter(v => !masteredIds.has(v.id));
+    }
+    
+    if (targetList.length === 0) {
+      toast.error('Không có từ vựng nào để học!');
+      return;
+    }
+
+    setVocabList(targetList.sort(() => Math.random() - 0.5));
+    setCurrentIndex(0);
+    setUserInput('');
+    setIsAnswered(false);
+    setScore(0);
+    setUsedHint(false);
+    setHintsUsedCount(0);
+    setCorrectWords([]);
+    setIncorrectWords([]);
+    setShowModeSelection(false);
   };
 
   useEffect(() => {
@@ -77,12 +149,12 @@ const FillBlank = () => {
 
   // Focus input automatically on question change
   useEffect(() => {
-    if (!loading && !isFinished && inputRef.current) {
+    if (!loading && !isFinished && !showModeSelection && inputRef.current) {
       setTimeout(() => {
         inputRef.current?.focus();
       }, 200);
     }
-  }, [currentIndex, loading, isFinished]);
+  }, [currentIndex, loading, isFinished, showModeSelection]);
 
   const speakWord = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -101,7 +173,7 @@ const FillBlank = () => {
     return word[0] + ' _'.repeat(length - 2) + ' ' + word[length - 1];
   };
 
-  const handleCheckAnswer = (e) => {
+  const handleCheckAnswer = async (e) => {
     if (e) e.preventDefault();
     if (isAnswered) return;
 
@@ -112,6 +184,18 @@ const FillBlank = () => {
     const correct = normalizedInput === normalizedTarget;
     setIsCorrect(correct);
     setIsAnswered(true);
+
+    // Save learning progress immediately in real-time
+    try {
+      await supabase.from('learning_progress').upsert({
+        user_id: user.id,
+        vocabulary_id: currentVocab.id,
+        status: correct ? 'mastered' : 'learning',
+        last_reviewed_at: new Date().toISOString()
+      }, { onConflict: 'user_id,vocabulary_id' });
+    } catch (err) {
+      console.error('Failed to save learning progress in real-time:', err);
+    }
 
     if (correct) {
       setScore((prev) => prev + 1);
@@ -156,24 +240,9 @@ const FillBlank = () => {
       const bonus = isPerfect ? 15 : 0;
       const earnedXP = Math.max(0, baseXP - penalty + bonus);
 
-      const progressUpdates = [
-        ...correctWords.map((vocabId) => ({
-          user_id: user.id,
-          vocabulary_id: vocabId,
-          status: 'mastered',
-          last_reviewed_at: new Date().toISOString(),
-        })),
-        ...incorrectWords.map((vocabId) => ({
-          user_id: user.id,
-          vocabulary_id: vocabId,
-          status: 'learning',
-          last_reviewed_at: new Date().toISOString(),
-        })),
-      ];
-
       await updateSessionResults({
         xpGained: earnedXP,
-        progressUpdates,
+        progressUpdates: [] // Progress already updated in real-time during session!
       });
 
       setXpAwarded(true);
@@ -220,10 +289,10 @@ const FillBlank = () => {
     );
   }
 
-  if (vocabList.length === 0) return null;
+  if (!showModeSelection && vocabList.length === 0) return null;
 
-  const currentVocab = vocabList[currentIndex];
-  const progressPercent = (currentIndex / vocabList.length) * 100;
+  const currentVocab = vocabList[currentIndex] || {};
+  const progressPercent = vocabList.length > 0 ? (currentIndex / vocabList.length) * 100 : 0;
 
   return (
     <div className="fill-page">
@@ -237,7 +306,59 @@ const FillBlank = () => {
         </span>
       </div>
 
-      {!isFinished ? (
+      {showModeSelection ? (
+        <div className="mode-selection-container">
+          <motion.div 
+            className="mode-selection-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="mode-title">Chế độ điền từ</h2>
+            <p className="mode-subtitle">Chọn phạm vi từ vựng bạn muốn luyện tập điền từ lần này</p>
+            
+            <div className="mode-stats-grid">
+              <div className="mode-stat-item total">
+                <span className="value">{stats.total}</span>
+                <span className="label">Tổng số từ</span>
+              </div>
+              <div className="mode-stat-item mastered">
+                <span className="value">{stats.mastered}</span>
+                <span className="label">Đã thuộc</span>
+              </div>
+              <div className="mode-stat-item remaining">
+                <span className="value">{stats.total - stats.mastered}</span>
+                <span className="label">Chưa thuộc</span>
+              </div>
+            </div>
+
+            <div className="mode-options">
+              {stats.total > stats.mastered && (
+                <button 
+                  className="mode-btn primary-btn"
+                  onClick={() => handleStartLearningMode(true)}
+                >
+                  <span className="mode-btn-icon">🚀</span>
+                  <div className="mode-btn-text">
+                    <span className="title">Học tiếp các từ còn lại</span>
+                    <span className="desc">Chỉ điền từ các từ chưa thuộc ({stats.total - stats.mastered} từ)</span>
+                  </div>
+                </button>
+              )}
+              
+              <button 
+                className={`mode-btn ${stats.total === stats.mastered ? 'primary-btn' : ''}`}
+                onClick={() => handleStartLearningMode(false)}
+              >
+                <span className="mode-btn-icon">🔄</span>
+                <div className="mode-btn-text">
+                  <span className="title">Ôn tập lại tất cả</span>
+                  <span className="desc">Điền từ toàn bộ {stats.total} từ của chủ đề</span>
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : !isFinished ? (
         <div className="fill-container">
           {/* Progress bar */}
           <div className="fill-progress-section">

@@ -33,6 +33,12 @@ const Quiz = () => {
   const [correctWords, setCorrectWords] = useState([]);
   const [incorrectWords, setIncorrectWords] = useState([]);
 
+  // New learning mode selection states
+  const [showModeSelection, setShowModeSelection] = useState(false);
+  const [rawVocabulary, setRawVocabulary] = useState([]);
+  const [masteredIds, setMasteredIds] = useState(new Set());
+  const [stats, setStats] = useState({ total: 0, mastered: 0, learning: 0, new: 0 });
+
   const speakWord = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'en-US';
@@ -40,19 +46,19 @@ const Quiz = () => {
     speechSynthesis.speak(utterance);
   };
 
-  const generateQuiz = (vocabList) => {
-    if (vocabList.length < 4) {
+  const generateQuiz = (vocabList, allVocabList) => {
+    if (allVocabList.length < 4) {
       toast.error('Cần ít nhất 4 từ vựng trong chủ đề này để làm trắc nghiệm');
       navigate(`/topics/${id}`);
-      return;
+      return [];
     }
 
-    const quizQuestions = vocabList.map((vocab, index) => {
+    const quizQuestions = vocabList.map((vocab) => {
       // 50% chance of English -> Vietnamese or Vietnamese -> English question
       const isEnToVi = Math.random() > 0.5;
       
-      // Select 3 random incorrect answers (distractors) from the rest of vocabulary
-      const otherVocab = vocabList.filter((v) => v.id !== vocab.id);
+      // Select 3 random incorrect answers (distractors) from the rest of the ENTIRE vocabulary
+      const otherVocab = allVocabList.filter((v) => v.id !== vocab.id);
       const shuffledOthers = [...otherVocab].sort(() => Math.random() - 0.5);
       const distractors = shuffledOthers.slice(0, 3);
 
@@ -94,14 +100,94 @@ const Quiz = () => {
         return;
       }
 
+      if (!vocabRes.data || vocabRes.data.length === 0) {
+        toast.error('Chủ đề này chưa có từ vựng để làm trắc nghiệm!');
+        navigate(`/topics/${id}`);
+        return;
+      }
+
       setTopic(topicRes.data);
-      const generated = generateQuiz(vocabRes.data || []);
-      setQuestions(generated);
+      const rawVocab = vocabRes.data;
+      setRawVocabulary(rawVocab);
+
+      // Verify that there are at least 4 words in the topic
+      if (rawVocab.length < 4) {
+        toast.error('Chủ đề cần ít nhất 4 từ để làm bài trắc nghiệm.');
+        navigate(`/topics/${id}`);
+        return;
+      }
+
+      // Fetch user progress for these words
+      const vocabIds = rawVocab.map(v => v.id);
+      const { data: progressData, error: progressError } = await supabase
+        .from('learning_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('vocabulary_id', vocabIds);
+
+      if (progressError) throw progressError;
+
+      const progressMap = {};
+      const masteredSet = new Set();
+      let masteredCount = 0;
+      let learningCount = 0;
+
+      (progressData || []).forEach((p) => {
+        progressMap[p.vocabulary_id] = p.status;
+        if (p.status === 'mastered') {
+          masteredSet.add(p.vocabulary_id);
+          masteredCount++;
+        } else if (p.status === 'learning') {
+          learningCount++;
+        }
+      });
+
+      const newCount = rawVocab.length - masteredCount - learningCount;
+      setMasteredIds(masteredSet);
+      setStats({
+        total: rawVocab.length,
+        mastered: masteredCount,
+        learning: learningCount,
+        new: newCount
+      });
+
+      // If there are mastered words, show learning mode selection screen
+      if (masteredCount > 0) {
+        setShowModeSelection(true);
+      } else {
+        // Start studying all words
+        const generated = generateQuiz(rawVocab, rawVocab);
+        setQuestions(generated);
+        setShowModeSelection(false);
+      }
     } catch (err) {
-      toast.error('Lỗi khi chuẩn bị bài trắc nghiệm');
+      console.error(err);
+      toast.error('Lỗi khi tải dữ liệu trắc nghiệm');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartLearningMode = (onlyRemaining) => {
+    let targetList = [...rawVocabulary];
+    if (onlyRemaining) {
+      targetList = rawVocabulary.filter(v => !masteredIds.has(v.id));
+    }
+    
+    if (targetList.length === 0) {
+      toast.error('Không có từ vựng nào để học!');
+      return;
+    }
+
+    const generated = generateQuiz(targetList, rawVocabulary);
+    setQuestions(generated);
+    setCurrentIndex(0);
+    setScore(0);
+    setSelectedOption(null);
+    setIsAnswered(false);
+    setCorrectWords([]);
+    setIncorrectWords([]);
+    setShowModeSelection(false);
   };
 
   useEffect(() => {
@@ -113,7 +199,7 @@ const Quiz = () => {
   // Keyboard support for selecting options (1, 2, 3, 4) and continuing (Enter)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (isFinished || loading || questions.length === 0) return;
+      if (isFinished || loading || showModeSelection || questions.length === 0) return;
 
       if (!isAnswered) {
         const optionKeys = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Key1', 'Key2', 'Key3', 'Key4'];
@@ -132,17 +218,30 @@ const Quiz = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, questions, isAnswered, isFinished, loading]);
+  }, [currentIndex, questions, isAnswered, isFinished, loading, showModeSelection]);
 
-  const handleSelectOption = (optionIndex) => {
+  const handleSelectOption = async (optionIndex) => {
     if (isAnswered) return;
     
     setSelectedOption(optionIndex);
     setIsAnswered(true);
 
     const currentQuestion = questions[currentIndex];
+    const isCorrect = optionIndex === currentQuestion.correctIndex;
+
+    // Save learning progress immediately in real-time
+    try {
+      await supabase.from('learning_progress').upsert({
+        user_id: user.id,
+        vocabulary_id: currentQuestion.vocabId,
+        status: isCorrect ? 'mastered' : 'learning',
+        last_reviewed_at: new Date().toISOString()
+      }, { onConflict: 'user_id,vocabulary_id' });
+    } catch (err) {
+      console.error('Failed to save learning progress in real-time:', err);
+    }
     
-    if (optionIndex === currentQuestion.correctIndex) {
+    if (isCorrect) {
       setScore((prev) => prev + 1);
       setCorrectWords((prev) => [...prev, currentQuestion.vocabId]);
       toast.success('Chính xác! 🎉', { duration: 1000 });
@@ -182,24 +281,9 @@ const Quiz = () => {
       // Award 3 XP for each correct answer + 5 bonus XP for perfect score
       const earnedXP = score * 3 + (isPerfect ? 10 : 0);
 
-      const progressUpdates = [
-        ...correctWords.map((vocabId) => ({
-          user_id: user.id,
-          vocabulary_id: vocabId,
-          status: 'mastered',
-          last_reviewed_at: new Date().toISOString(),
-        })),
-        ...incorrectWords.map((vocabId) => ({
-          user_id: user.id,
-          vocabulary_id: vocabId,
-          status: 'learning',
-          last_reviewed_at: new Date().toISOString(),
-        })),
-      ];
-
       await updateSessionResults({
         xpGained: earnedXP,
-        progressUpdates,
+        progressUpdates: [] // Progress already updated in real-time during session!
       });
 
       setXpAwarded(true);
@@ -218,10 +302,10 @@ const Quiz = () => {
     );
   }
 
-  if (questions.length === 0) return null;
+  if (!showModeSelection && questions.length === 0) return null;
 
-  const currentQuestion = questions[currentIndex];
-  const progressPercent = ((currentIndex) / questions.length) * 100;
+  const currentQuestion = questions[currentIndex] || {};
+  const progressPercent = questions.length > 0 ? ((currentIndex) / questions.length) * 100 : 0;
 
   return (
     <div className="quiz-page">
@@ -235,7 +319,59 @@ const Quiz = () => {
         </span>
       </div>
 
-      {!isFinished ? (
+      {showModeSelection ? (
+        <div className="mode-selection-container">
+          <motion.div 
+            className="mode-selection-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="mode-title">Chế độ trắc nghiệm</h2>
+            <p className="mode-subtitle">Chọn phạm vi từ vựng bạn muốn kiểm tra lần này</p>
+            
+            <div className="mode-stats-grid">
+              <div className="mode-stat-item total">
+                <span className="value">{stats.total}</span>
+                <span className="label">Tổng số từ</span>
+              </div>
+              <div className="mode-stat-item mastered">
+                <span className="value">{stats.mastered}</span>
+                <span className="label">Đã thuộc</span>
+              </div>
+              <div className="mode-stat-item remaining">
+                <span className="value">{stats.total - stats.mastered}</span>
+                <span className="label">Chưa thuộc</span>
+              </div>
+            </div>
+
+            <div className="mode-options">
+              {stats.total > stats.mastered && (
+                <button 
+                  className="mode-btn primary-btn"
+                  onClick={() => handleStartLearningMode(true)}
+                >
+                  <span className="mode-btn-icon">🚀</span>
+                  <div className="mode-btn-text">
+                    <span className="title">Học tiếp các từ còn lại</span>
+                    <span className="desc">Chỉ làm trắc nghiệm {stats.total - stats.mastered} từ chưa thuộc</span>
+                  </div>
+                </button>
+              )}
+              
+              <button 
+                className={`mode-btn ${stats.total === stats.mastered ? 'primary-btn' : ''}`}
+                onClick={() => handleStartLearningMode(false)}
+              >
+                <span className="mode-btn-icon">🔄</span>
+                <div className="mode-btn-text">
+                  <span className="title">Ôn tập lại tất cả</span>
+                  <span className="desc">Làm trắc nghiệm toàn bộ {stats.total} từ của chủ đề</span>
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : !isFinished ? (
         <div className="quiz-container">
           {/* Progress bar */}
           <div className="quiz-progress-section">

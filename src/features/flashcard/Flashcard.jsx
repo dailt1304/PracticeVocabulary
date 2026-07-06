@@ -49,6 +49,12 @@ const Flashcard = () => {
   const [isFinished, setIsFinished] = useState(false);
   const [xpAwarded, setXpAwarded] = useState(false);
 
+  // New learning mode selection states
+  const [showModeSelection, setShowModeSelection] = useState(false);
+  const [rawVocabulary, setRawVocabulary] = useState([]);
+  const [masteredIds, setMasteredIds] = useState(new Set());
+  const [stats, setStats] = useState({ total: 0, mastered: 0, learning: 0, new: 0 });
+
   const fetchTopicAndVocab = async () => {
     try {
       const [topicRes, vocabRes] = await Promise.all([
@@ -69,14 +75,77 @@ const Flashcard = () => {
       }
 
       setTopic(topicRes.data);
-      // Shuffle vocabulary to make learning session dynamic
-      const shuffled = [...vocabRes.data].sort(() => Math.random() - 0.5);
-      setVocabulary(shuffled);
+      const rawVocab = vocabRes.data;
+      setRawVocabulary(rawVocab);
+
+      // Fetch user progress for these words
+      const vocabIds = rawVocab.map(v => v.id);
+      const { data: progressData, error: progressError } = await supabase
+        .from('learning_progress')
+        .select('*')
+        .eq('user_id', user.id)
+        .in('vocabulary_id', vocabIds);
+
+      if (progressError) throw progressError;
+
+      const progressMap = {};
+      const masteredSet = new Set();
+      let masteredCount = 0;
+      let learningCount = 0;
+
+      (progressData || []).forEach((p) => {
+        progressMap[p.vocabulary_id] = p.status;
+        if (p.status === 'mastered') {
+          masteredSet.add(p.vocabulary_id);
+          masteredCount++;
+        } else if (p.status === 'learning') {
+          learningCount++;
+        }
+      });
+
+      const newCount = rawVocab.length - masteredCount - learningCount;
+      setMasteredIds(masteredSet);
+      setStats({
+        total: rawVocab.length,
+        mastered: masteredCount,
+        learning: learningCount,
+        new: newCount
+      });
+
+      // If there are mastered words, show learning mode selection screen
+      if (masteredCount > 0) {
+        setShowModeSelection(true);
+      } else {
+        // Shuffle and start studying all words
+        const shuffled = [...rawVocab].sort(() => Math.random() - 0.5);
+        setVocabulary(shuffled);
+        setShowModeSelection(false);
+      }
     } catch (err) {
+      console.error(err);
       toast.error('Lỗi khi tải dữ liệu');
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleStartLearningMode = (onlyRemaining) => {
+    let targetList = [...rawVocabulary];
+    if (onlyRemaining) {
+      targetList = rawVocabulary.filter(v => !masteredIds.has(v.id));
+    }
+    
+    if (targetList.length === 0) {
+      toast.error('Không có từ vựng nào để học!');
+      return;
+    }
+
+    const shuffled = targetList.sort(() => Math.random() - 0.5);
+    setVocabulary(shuffled);
+    setCurrentIndex(0);
+    setLearnedWords([]);
+    setReviewWords([]);
+    setShowModeSelection(false);
   };
 
   useEffect(() => {
@@ -88,7 +157,7 @@ const Flashcard = () => {
   // Keyboard navigation support
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (isFinished) return;
+      if (isFinished || showModeSelection) return;
       if (e.code === 'Space') {
         e.preventDefault();
         setIsFlipped((prev) => !prev);
@@ -101,7 +170,7 @@ const Flashcard = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [currentIndex, vocabulary, isFlipped, isFinished]);
+  }, [currentIndex, vocabulary, isFlipped, isFinished, showModeSelection]);
 
   const speakWord = (text) => {
     const utterance = new SpeechSynthesisUtterance(text);
@@ -114,9 +183,21 @@ const Flashcard = () => {
     setIsFlipped(!isFlipped);
   };
 
-  const nextCard = (isMastered) => {
+  const nextCard = async (isMastered) => {
     const currentWord = vocabulary[currentIndex];
     
+    // Save learning progress immediately in real-time
+    try {
+      await supabase.from('learning_progress').upsert({
+        user_id: user.id,
+        vocabulary_id: currentWord.id,
+        status: isMastered ? 'mastered' : 'learning',
+        last_reviewed_at: new Date().toISOString()
+      }, { onConflict: 'user_id,vocabulary_id' });
+    } catch (err) {
+      console.error('Failed to save learning progress in real-time:', err);
+    }
+
     if (isMastered) {
       setLearnedWords((prev) => [...prev, currentWord.id]);
     } else {
@@ -155,24 +236,9 @@ const Flashcard = () => {
     if (!xpAwarded && user) {
       const earnedXP = 15; // Base XP for completing flashcard session
 
-      const progressUpdates = [
-        ...learnedWords.map(wordId => ({
-          user_id: user.id,
-          vocabulary_id: wordId,
-          status: 'mastered',
-          last_reviewed_at: new Date().toISOString()
-        })),
-        ...reviewWords.map(wordId => ({
-          user_id: user.id,
-          vocabulary_id: wordId,
-          status: 'learning',
-          last_reviewed_at: new Date().toISOString()
-        }))
-      ];
-
       await updateSessionResults({
         xpGained: earnedXP,
-        progressUpdates
+        progressUpdates: [] // Progress already updated in real-time during session!
       });
 
       setXpAwarded(true);
@@ -206,7 +272,59 @@ const Flashcard = () => {
         </span>
       </div>
 
-      {!isFinished ? (
+      {showModeSelection ? (
+        <div className="mode-selection-container">
+          <motion.div 
+            className="mode-selection-card"
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+          >
+            <h2 className="mode-title">Chế độ học Flashcard</h2>
+            <p className="mode-subtitle">Chọn phạm vi từ vựng bạn muốn học lần này</p>
+            
+            <div className="mode-stats-grid">
+              <div className="mode-stat-item total">
+                <span className="value">{stats.total}</span>
+                <span className="label">Tổng số từ</span>
+              </div>
+              <div className="mode-stat-item mastered">
+                <span className="value">{stats.mastered}</span>
+                <span className="label">Đã thuộc</span>
+              </div>
+              <div className="mode-stat-item remaining">
+                <span className="value">{stats.total - stats.mastered}</span>
+                <span className="label">Chưa thuộc</span>
+              </div>
+            </div>
+
+            <div className="mode-options">
+              {stats.total > stats.mastered && (
+                <button 
+                  className="mode-btn primary-btn"
+                  onClick={() => handleStartLearningMode(true)}
+                >
+                  <span className="mode-btn-icon">🚀</span>
+                  <div className="mode-btn-text">
+                    <span className="title">Học tiếp các từ còn lại</span>
+                    <span className="desc">Chỉ học {stats.total - stats.mastered} từ chưa thuộc</span>
+                  </div>
+                </button>
+              )}
+              
+              <button 
+                className={`mode-btn ${stats.total === stats.mastered ? 'primary-btn' : ''}`}
+                onClick={() => handleStartLearningMode(false)}
+              >
+                <span className="mode-btn-icon">🔄</span>
+                <div className="mode-btn-text">
+                  <span className="title">Ôn tập lại tất cả</span>
+                  <span className="desc">Học lại toàn bộ {stats.total} từ của chủ đề</span>
+                </div>
+              </button>
+            </div>
+          </motion.div>
+        </div>
+      ) : !isFinished ? (
         <div className="flashcard-container">
           {/* Progress bar */}
           <div className="flashcard-progress">
