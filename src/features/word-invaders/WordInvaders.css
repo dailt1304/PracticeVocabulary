@@ -1,0 +1,594 @@
+/* ═══════════════════════════════════════════════ */
+/*           WORD INVADERS — Game Styles           */
+/* ═══════════════════════════════════════════════ */
+
+.word-invaders-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(170deg, #0a0a1a 0%, #0d1b2a 40%, #1a0a2e 100%);
+  position: relative;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+}
+
+/* ── Header ── */
+
+.invaders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: rgba(10, 10, 30, 0.7);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  z-index: 20;
+  flex-shrink: 0;
+}
+
+.invaders-header .back-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  margin: 0;
+}
+
+.invaders-header .back-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.hp-display {
+  display: flex;
+  gap: 6px;
+  font-size: 22px;
+}
+
+.hp-heart {
+  transition: all 0.3s;
+  display: inline-block;
+}
+
+.hp-heart.dead {
+  filter: grayscale(1) opacity(0.3);
+  animation: heartLost 0.4s ease;
+}
+
+@keyframes heartLost {
+  0%, 100% { transform: translateY(0); }
+  20% { transform: translateY(-6px) rotate(-10deg); }
+  40% { transform: translateY(4px) rotate(8deg); }
+  60% { transform: translateY(-3px) rotate(-5deg); }
+  80% { transform: translateY(2px); }
+}
+
+.score-display {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.score-value {
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.level-badge {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+/* ── Game Area ── */
+
+.game-area {
+  flex: 1;
+  position: relative;
+  overflow: hidden;
+  cursor: default;
+  min-height: 400px;
+}
+
+/* Starfield Background */
+.starfield {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.starfield::before,
+.starfield::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  animation: twinkle 3s infinite ease-in-out alternate;
+}
+
+.starfield::before {
+  width: 2px;
+  height: 2px;
+  top: 15%;
+  left: 20%;
+  box-shadow:
+    0 0 4px 1px rgba(255, 255, 255, 0.4),
+    120px 30px 3px rgba(255, 255, 255, 0.2),
+    250px 80px 2px rgba(255, 255, 255, 0.35),
+    400px 20px 3px rgba(255, 255, 255, 0.15),
+    50px 150px 2px rgba(255, 255, 255, 0.3),
+    300px 130px 3px rgba(255, 255, 255, 0.25),
+    500px 90px 2px rgba(255, 255, 255, 0.2),
+    180px 200px 2px rgba(255, 255, 255, 0.35),
+    420px 170px 3px rgba(255, 255, 255, 0.15),
+    80px 250px 2px rgba(255, 255, 255, 0.3),
+    350px 220px 2px rgba(255, 255, 255, 0.2),
+    200px 300px 3px rgba(255, 255, 255, 0.25),
+    550px 250px 2px rgba(255, 255, 255, 0.35);
+}
+
+.starfield::after {
+  width: 1px;
+  height: 1px;
+  top: 40%;
+  left: 60%;
+  animation-delay: 1.5s;
+  box-shadow:
+    0 0 3px 1px rgba(255, 255, 255, 0.3),
+    -100px 20px 2px rgba(255, 255, 255, 0.2),
+    -200px 60px 3px rgba(255, 255, 255, 0.15),
+    50px -40px 2px rgba(255, 255, 255, 0.25),
+    -50px 100px 2px rgba(255, 255, 255, 0.3),
+    100px 80px 3px rgba(255, 255, 255, 0.2),
+    -150px -30px 2px rgba(255, 255, 255, 0.35),
+    200px 50px 2px rgba(255, 255, 255, 0.15);
+}
+
+@keyframes twinkle {
+  0% { opacity: 0.4; }
+  100% { opacity: 1; }
+}
+
+/* Danger Line */
+.danger-line {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, #f5576c, transparent);
+  opacity: 0.6;
+  animation: dangerPulse 1.5s ease-in-out infinite;
+  z-index: 5;
+}
+
+@keyframes dangerPulse {
+  0%, 100% { opacity: 0.3; box-shadow: 0 0 8px rgba(245, 87, 108, 0.2); }
+  50% { opacity: 0.8; box-shadow: 0 0 20px rgba(245, 87, 108, 0.5); }
+}
+
+/* ── Meteorite ── */
+
+.meteorite-wrapper {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.meteorite {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 16px;
+  background: rgba(20, 20, 50, 0.75);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(102, 126, 234, 0.35);
+  border-radius: 12px;
+  box-shadow:
+    0 4px 20px rgba(102, 126, 234, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: meteoriteFloat 2s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+@keyframes meteoriteFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+
+.meteorite.danger {
+  border-color: rgba(245, 87, 108, 0.6);
+  box-shadow:
+    0 4px 25px rgba(245, 87, 108, 0.25),
+    0 0 15px rgba(245, 87, 108, 0.15),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  animation: meteoriteFloat 2s ease-in-out infinite, dangerGlow 0.8s ease-in-out infinite;
+}
+
+@keyframes dangerGlow {
+  0%, 100% { box-shadow: 0 4px 25px rgba(245, 87, 108, 0.2), 0 0 10px rgba(245, 87, 108, 0.1); }
+  50% { box-shadow: 0 4px 30px rgba(245, 87, 108, 0.4), 0 0 25px rgba(245, 87, 108, 0.3); }
+}
+
+.meteorite.exploding {
+  z-index: 15;
+  border-color: rgba(79, 172, 254, 0.6);
+  box-shadow: 0 0 40px rgba(79, 172, 254, 0.4);
+}
+
+.meteorite-meaning {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.55);
+  font-weight: 500;
+  text-align: center;
+}
+
+.meteorite-word {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ffffff;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  letter-spacing: 2px;
+  text-align: center;
+}
+
+.explosion-ring {
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 2px solid rgba(79, 172, 254, 0.5);
+  animation: ringExpand 0.4s ease-out forwards;
+}
+
+@keyframes ringExpand {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+.danger-pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 14px;
+  border: 1px solid rgba(245, 87, 108, 0.4);
+  animation: dangerPulseRing 1s ease-in-out infinite;
+}
+
+@keyframes dangerPulseRing {
+  0%, 100% { transform: scale(1); opacity: 0.5; }
+  50% { transform: scale(1.08); opacity: 0; }
+}
+
+/* ── Input Area ── */
+
+.input-area {
+  padding: 16px 20px 20px;
+  background: rgba(10, 10, 30, 0.8);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  position: relative;
+  z-index: 20;
+  flex-shrink: 0;
+}
+
+.invaders-input {
+  width: 100%;
+  padding: 14px 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(102, 126, 234, 0.3);
+  border-radius: 14px;
+  color: #fff;
+  font-size: 18px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  letter-spacing: 1.5px;
+  text-align: center;
+  outline: none;
+  transition: all 0.3s;
+  box-sizing: border-box;
+}
+
+.invaders-input:focus {
+  border-color: rgba(102, 126, 234, 0.7);
+  box-shadow: 0 0 20px rgba(102, 126, 234, 0.15);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.invaders-input:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.invaders-input::placeholder {
+  color: rgba(255, 255, 255, 0.25);
+  font-family: 'Inter', sans-serif;
+  letter-spacing: 0;
+}
+
+.typing-preview {
+  display: block;
+  text-align: center;
+  margin-top: 6px;
+  font-size: 12px;
+  color: rgba(102, 126, 234, 0.6);
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  letter-spacing: 1px;
+}
+
+/* ── Game Overlay ── */
+
+.game-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 5, 20, 0.85);
+  backdrop-filter: blur(16px);
+}
+
+.overlay-card {
+  max-width: 440px;
+  width: 90%;
+  padding: 36px 32px;
+  background: rgba(20, 20, 50, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 24px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+}
+
+.overlay-icon {
+  font-size: 52px;
+  margin-bottom: 12px;
+}
+
+.overlay-title {
+  font-size: 28px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 6px;
+  letter-spacing: -0.5px;
+}
+
+.overlay-subtitle {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0 0 20px;
+}
+
+.overlay-topic-info {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.overlay-topic-badge {
+  padding: 5px 14px;
+  border-radius: 20px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.overlay-vocab-count {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.overlay-instructions {
+  text-align: left;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 16px 20px;
+  margin-bottom: 16px;
+}
+
+.overlay-instructions h4 {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.overlay-instructions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.overlay-instructions li {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.55);
+  padding: 4px 0;
+  line-height: 1.5;
+}
+
+.overlay-tip {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.35);
+  margin: 0 0 20px;
+  font-style: italic;
+}
+
+.overlay-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.overlay-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 14px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.25s;
+  border: none;
+  width: 100%;
+}
+
+.overlay-btn.primary {
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  color: #fff;
+  box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+}
+
+.overlay-btn.primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 25px rgba(102, 126, 234, 0.45);
+}
+
+.overlay-btn.secondary {
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.overlay-btn.secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+/* ── Game Over Stats ── */
+
+.gameover-stats {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
+  margin: 20px 0;
+}
+
+.gameover-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.gameover-stat.xp {
+  border-color: rgba(102, 126, 234, 0.3);
+  background: rgba(102, 126, 234, 0.08);
+}
+
+.gameover-stat-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.gameover-stat.xp .gameover-stat-value {
+  color: #667eea;
+}
+
+.gameover-stat-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 4px;
+}
+
+/* ── Loading State ── */
+
+.word-invaders-page .loading-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.word-invaders-page .loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 600px) {
+  .invaders-header {
+    padding: 10px 14px;
+  }
+
+  .hp-display {
+    font-size: 18px;
+    gap: 4px;
+  }
+
+  .score-value {
+    font-size: 13px;
+  }
+
+  .level-badge {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .meteorite {
+    padding: 8px 12px;
+  }
+
+  .meteorite-word {
+    font-size: 14px;
+    letter-spacing: 1.5px;
+  }
+
+  .meteorite-meaning {
+    font-size: 10px;
+  }
+
+  .invaders-input {
+    font-size: 15px;
+    padding: 12px 16px;
+  }
+
+  .overlay-card {
+    padding: 28px 20px;
+  }
+
+  .overlay-title {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 768px) {
+  .word-invaders-page {
+    height: calc(100vh - 80px);
+  }
+}

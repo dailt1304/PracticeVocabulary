@@ -11,6 +11,7 @@ import TopicDetail from './features/topics/TopicDetail';
 import Flashcard from './features/flashcard/Flashcard';
 import Quiz from './features/quiz/Quiz';
 import FillBlank from './features/fill/FillBlank';
+import WordInvaders from './features/word-invaders/WordInvaders';
 import Landing from './features/landing/Landing';
 
 function App() {
@@ -91,6 +92,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <Layout><FillBlank /></Layout>
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/topics/:id/invaders"
+            element={
+              <ProtectedRoute>
+                <Layout><WordInvaders /></Layout>
               </ProtectedRoute>
             }
           />

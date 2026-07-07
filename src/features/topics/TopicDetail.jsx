@@ -15,6 +15,7 @@ import {
   FiBookOpen,
   FiCheckCircle,
   FiPenTool,
+  FiZap,
 } from 'react-icons/fi';
 import './TopicDetail.css';
 
@@ -373,6 +374,16 @@ const TopicDetail = () => {
             >
               <FiPenTool /> Điền từ
             </motion.button>
+            {vocabulary.length >= 5 && (
+              <motion.button
+                className="practice-btn invaders-btn"
+                onClick={() => navigate(`/topics/${id}/invaders`)}
+                whileHover={{ scale: 1.03 }}
+                whileTap={{ scale: 0.97 }}
+              >
+                <FiZap /> Word Invaders
+              </motion.button>
+            )}
           </div>
         )}
         {vocabulary.length > 0 && vocabulary.length < 4 && (
